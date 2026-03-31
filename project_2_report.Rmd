@@ -1,0 +1,143 @@
+---
+title: My dynamic report
+output: html_fragment
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, message=FALSE, warning=FALSE, error=FALSE)
+
+```
+
+```{css}
+
+```
+
+## Bus trip waiting time and crowding patterns
+
+This dynamic report summarises observational data collected from bus trips. It focuses on waiting time, crowding level, and when the trip was observed.
+
+```{r}
+library(tidyverse)
+
+csv_url <- "https://docs.google.com/spreadsheets/d/e/2PACX-1vSq8sCLbN7Gk1WVCHG2rTKcyvYiCdYiMqBJAQurDNrVJkV_MM361DtHaR3KTDorBGXHnYUZSMvqa48Q/pub?gid=1103664544&single=true&output=csv"
+
+temp_csv <- tempfile(fileext = ".csv")
+options(timeout = 120)
+download.file(csv_url, temp_csv, mode = "wb", method = "libcurl", quiet = TRUE)
+
+logged_data <- read_csv(temp_csv, show_col_types = FALSE)
+
+latest_data <- logged_data %>%
+  rename(
+    timestamp = Timestamp,
+    time_of_day = `What time of day was this bus trip?`,
+    day_type = `Which day type was this observation recorded on?`,
+    wait_minutes = `How many minutes did you wait for the bus?`,
+    crowding_level = `How crowded was the bus when you boarded?`,
+    on_time_status = `Was the bus on time based on the scheduled arrival?`
+  ) %>%
+  mutate(
+    time_of_day = case_when(
+      time_of_day == "8:00" ~ "6:00-8:59 am",
+      TRUE ~ time_of_day
+    ),
+    time_of_day = factor(
+      time_of_day,
+      levels = c(
+        "6:00-8:59 am",
+        "9:00-11:59 am",
+        "12:00-2:59 pm",
+        "3:00-5:59 pm",
+        "6:00 pm or later"
+      )
+    ),
+    day_type = factor(
+      day_type,
+      levels = c("Weekday", "Weekend")
+    ),
+    crowding_level = factor(
+      crowding_level,
+      levels = c(
+        "Mostly empty",
+        "Some seats available",
+        "Few seats available",
+        "Standing room only",
+        "Completely full / very crowded"
+      )
+    ),
+    on_time_status = factor(
+      on_time_status,
+      levels = c("Early", "On time", "Late", "Not sure")
+    )
+  )
+
+total_obs <- nrow(latest_data)
+mean_wait <- mean(latest_data$wait_minutes)
+max_wait <- max(latest_data$wait_minutes)
+
+weekday_mean <- latest_data %>%
+  filter(day_type == "Weekday") %>%
+  summarise(value = mean(wait_minutes)) %>%
+  pull(value)
+
+weekend_mean <- latest_data %>%
+  filter(day_type == "Weekend") %>%
+  summarise(value = mean(wait_minutes)) %>%
+  pull(value)
+
+most_common_crowding <- latest_data %>%
+  count(crowding_level, sort = TRUE) %>%
+  slice(1) %>%
+  pull(crowding_level)
+
+
+
+
+```
+A total of `r total_obs` bus trip observations were recorded.  
+The average waiting time was `r round(mean_wait, 1)` minutes, and the longest waiting time was `r max_wait` minutes.
+
+Weekday trips had an average waiting time of `r round(weekday_mean, 1)` minutes, while weekend trips had an average waiting time of `r round(weekend_mean, 1)` minutes.
+
+The most common crowding level recorded was **`r most_common_crowding`**.
+```{r}
+ggplot(latest_data, aes(x = time_of_day)) +
+  geom_bar() +
+  labs(
+    title = "Number of bus trips by time of day",
+    x = "Time of day",
+    y = "Number of observations"
+  ) +
+  theme_minimal()
+
+```
+
+This bar chart shows how the observations were distributed across different times of day.
+```{r}
+ggplot(latest_data, aes(x = crowding_level)) +
+  geom_bar() +
+  labs(
+    title = "Number of bus trips by crowding level",
+    x = "Crowding level",
+    y = "Number of observations"
+  ) +
+  coord_flip() +
+  theme_minimal()
+
+```
+
+This bar chart shows which crowding levels were observed most often.
+```{r}
+ggplot(latest_data, aes(x = day_type, fill = on_time_status)) +
+  geom_bar(position = "dodge") +
+  labs(
+    title = "Bus punctuality by day type",
+    x = "Day type",
+    y = "Number of observations",
+    fill = "On-time status"
+  ) +
+  theme_minimal()
+
+```
+
+This third chart compares punctuality categories between weekdays and weekends.
